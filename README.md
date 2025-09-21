@@ -100,7 +100,8 @@ curl -s -G "$API/auth/qr/status" \
 ```bash
 curl -s -G "$API/me" \
   -H "Authorization: Bearer $TOKEN" \
-  --data-urlencode "name=$NAME" | jq '{ok, me: {id, username, firstName, lastName}}'
+  --data-urlencode "name=$NAME" \
+| jq '{ok, me: (.me | {id, username, firstName, lastName})}'
 ```
 
 ### 3) Список каналов/чатов
@@ -115,16 +116,42 @@ curl -s -G "$API/channels" \
 
 ### 4) Сообщения из конкретного канала/диалога
 
-Подставьте `username` канала или числовой `id` из п.3:
+> Формат параметра `channel`:
+>
+> * `username` (например: `bestcrackersoft`)
+> * `-100<id>` для каналов (например: `-1001510394960`)
+> * «голый» `<id>` (например: `1510394960`) — сервер сам попробует `-100<id>`, затем как user/chat
 
 ```bash
-CHAN="hamster_kombat"   # пример
+CHAN="hamster_kombat"   # пример (или CHAN="-1001510394960" / CHAN="1510394960")
 curl -s -G "$API/messages" \
   -H "Authorization: Bearer $TOKEN" \
   --data-urlencode "name=$NAME" \
   --data-urlencode "channel=$CHAN" \
   --data-urlencode "limit=5" \
 | jq '{ok, nextOffsetId, sample: (.messages[0:3])}'
+```
+
+Пагинация:
+
+```bash
+# первый заход
+curl -s -G "$API/messages" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "name=$NAME" \
+  --data-urlencode "channel=$CHAN" \
+  --data-urlencode "limit=5" \
+| jq '{ok, nextOffsetId, ids: (.messages|map(.id))}'
+
+# подставьте nextOffsetId из ответа:
+OFFSET="1"
+curl -s -G "$API/messages" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "name=$NAME" \
+  --data-urlencode "channel=$CHAN" \
+  --data-urlencode "limit=5" \
+  --data-urlencode "offsetId=$OFFSET" \
+| jq '{ok, nextOffsetId, ids: (.messages|map(.id))}'
 ```
 
 ### 5) Отправка сообщения (например, в «Избранное»)
@@ -149,13 +176,13 @@ curl -s -X POST "$API/send" \
 * `GET  /auth/qr/status?name=<name>` — статус QR/аккаунта
 * `GET  /me?name=<name>` — профиль авторизованного пользователя
 * `GET  /channels?name=<name>&limit=200` — список диалогов/каналов
-* `GET  /messages?name=<name>&channel=<username|id>&limit=50&offsetId=0` — сообщения
+* `GET  /messages?name=<name>&channel=<username|-100id|id>&limit=50&offsetId=0` — сообщения
 * `POST /send` — отправка сообщения
 
   ```json
   {
     "name": "acc1",
-    "peer": "me",             // "me", username или numeric id
+    "peer": "me",             // "me", username, -100<id> или numeric id
     "message": "Привет!"
   }
   ```
@@ -178,21 +205,14 @@ pm2 restart tgapi --update-env && pm2 save
 
 ## Типичные ошибки и решения
 
-* **Команды «не реагируют» / пустой вывод**
-  — Вы забыли экспортировать `API/TOKEN/NAME`. Сначала выполните блок с переменными (см. выше).
-
-* **«command not found» после вставки**
-  — Вы случайно вставили в консоль вывод из визарда (QR/JSON). Вставляйте только команды.
-
-* **`Unauthorized` от API**
-  — Неверный заголовок `Authorization` или пустой `TOKEN`. Проверьте:
+* **Команды «не реагируют» / пустой вывод** — не экспортированы `API/TOKEN/NAME`. Сначала выполните блок с переменными.
+* **«command not found» после вставки** — в консоль вставлен вывод из визарда (QR/JSON). Вставляйте только команды.
+* **`Unauthorized` от API** — неверный заголовок `Authorization` или пустой `TOKEN`. Проверьте:
 
   ```bash
-  echo "$TOKEN"       # должен быть непустой
+  echo "$TOKEN"
   ```
-
-* **`name required`**
-  — Не передали `name` или имя не совпадает с авторизованным. Посмотрите список файлов в `/opt/tgapi/sessions/` и используйте то же имя.
+* **`name required`** — не передали `name` или имя не совпадает с авторизованным. Смотрите `/opt/tgapi/sessions/`.
 
 ---
 
