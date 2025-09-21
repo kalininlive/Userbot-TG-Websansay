@@ -33,7 +33,8 @@ bash /opt/tgapi/qr_wizard.sh
 После сканирования QR в Telegram появится `✅ Авторизовано`.
 Сессия сохраняется в `/opt/tgapi/sessions/`.
 
-> Ошиблись при вводе (например, нажали Enter на пустом поле)? Просто запустите визард ещё раз:
+> Ошиблись при вводе (нажали Enter на пустом поле и т.п.)?
+> Просто запустите визард ещё раз:
 >
 > ```bash
 > bash /opt/tgapi/qr_wizard.sh
@@ -58,16 +59,18 @@ bash /opt/tgapi/qr_wizard.sh
   ...
 ```
 
+В API выбирайте аккаунт параметром `name`.
+
 ---
 
 ## Быстрые проверки (после установки и авторизации)
 
-Экспорт переменных:
+> ⚠ Эти переменные нужно экспортировать **в каждой новой SSH-сессии**.
 
 ```bash
 API="http://127.0.0.1:3000"
 TOKEN="$(grep -E '^API_TOKEN=' /opt/tgapi/.env | cut -d'=' -f2)"
-NAME="acc1"   # замените на своё имя аккаунта
+NAME="acc1"   # замените на имя аккаунта, который вы авторизовали
 ```
 
 ### 0) Здоровье сервиса
@@ -90,14 +93,14 @@ curl -s -G "$API/auth/qr/status" \
   --data-urlencode "name=$NAME" | jq .
 ```
 
-Если всё ок, вернётся `{"status":"authorized"}`.
+Если всё ок, придёт `{"status":"authorized"}`.
 
-### 2) Данные профиля (эндпоинт `/me`)
+### 2) Профиль аккаунта
 
 ```bash
 curl -s -G "$API/me" \
   -H "Authorization: Bearer $TOKEN" \
-  --data-urlencode "name=$NAME" | jq .
+  --data-urlencode "name=$NAME" | jq '{ok, me: {id, username, firstName, lastName}}'
 ```
 
 ### 3) Список каналов/чатов
@@ -107,12 +110,12 @@ curl -s -G "$API/channels" \
   -H "Authorization: Bearer $TOKEN" \
   --data-urlencode "name=$NAME" \
   --data-urlencode "limit=200" \
-| jq '. | {ok, count: (.channels|length), sample: (.channels[0:10])}'
+| jq '{ok, count: (.channels|length), sample: (.channels[0:10])}'
 ```
 
 ### 4) Сообщения из конкретного канала/диалога
 
-Подставьте `username` канала (или числовой id) из пункта 3:
+Подставьте `username` канала или числовой `id` из п.3:
 
 ```bash
 CHAN="hamster_kombat"   # пример
@@ -121,7 +124,7 @@ curl -s -G "$API/messages" \
   --data-urlencode "name=$NAME" \
   --data-urlencode "channel=$CHAN" \
   --data-urlencode "limit=5" \
-| jq '. | {ok, nextOffsetId, sample: (.messages[0:3])}'
+| jq '{ok, nextOffsetId, sample: (.messages[0:3])}'
 ```
 
 ### 5) Отправка сообщения (например, в «Избранное»)
@@ -152,7 +155,7 @@ curl -s -X POST "$API/send" \
   ```json
   {
     "name": "acc1",
-    "peer": "me",             // "me", username, или numeric id
+    "peer": "me",             // "me", username или numeric id
     "message": "Привет!"
   }
   ```
@@ -170,6 +173,26 @@ Authorization: Bearer <API_TOKEN>
 ```bash
 pm2 restart tgapi --update-env && pm2 save
 ```
+
+---
+
+## Типичные ошибки и решения
+
+* **Команды «не реагируют» / пустой вывод**
+  — Вы забыли экспортировать `API/TOKEN/NAME`. Сначала выполните блок с переменными (см. выше).
+
+* **«command not found» после вставки**
+  — Вы случайно вставили в консоль вывод из визарда (QR/JSON). Вставляйте только команды.
+
+* **`Unauthorized` от API**
+  — Неверный заголовок `Authorization` или пустой `TOKEN`. Проверьте:
+
+  ```bash
+  echo "$TOKEN"       # должен быть непустой
+  ```
+
+* **`name required`**
+  — Не передали `name` или имя не совпадает с авторизованным. Посмотрите список файлов в `/opt/tgapi/sessions/` и используйте то же имя.
 
 ---
 
