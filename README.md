@@ -9,7 +9,7 @@ API-сервер для авторизации Telegram-аккаунтов че�
 ## Установка
 
 ```bash
-bash <(curl -fsSL https://github.com/kalininlive/Userbot-TG-Websansay/main/install_tgapi.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/install_tgapi.sh)
 ```
 
 ## Файлы
