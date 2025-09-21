@@ -1,3 +1,7 @@
+
+2.56.241.134
+8g*953jXu1lX
+
 # Userbot TG Websansay
 
 API-сервер для авторизации Telegram-аккаунтов через QR (GramJS) и интеграции с n8n.
@@ -5,7 +9,7 @@ API-сервер для авторизации Telegram-аккаунтов че�
 ## Установка
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/Websansay/Userbot-TG-Websansay/main/install_tgapi.sh)
+bash <(curl -fsSL https://github.com/kalininlive/Userbot-TG-Websansay/main/install_tgapi.sh)
 ```
 
 ## Файлы
