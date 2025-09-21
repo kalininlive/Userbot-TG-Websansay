@@ -17,7 +17,7 @@ const API_TOKEN = process.env.API_TOKEN || '';
 const SESS_DIR  = path.resolve(process.env.SESSION_DIR || './sessions');
 fs.mkdirSync(SESS_DIR, { recursive: true });
 
-/* --- helpers --- */
+/* ---------------- helpers ---------------- */
 function accPaths(name){
   const json = path.join(SESS_DIR, `${name}.json`);
   const sess = path.join(SESS_DIR, `${name}.session`);
@@ -42,11 +42,14 @@ function saveQrState(name, state){
   const { qrf } = accPaths(name);
   fs.writeFileSync(qrf, JSON.stringify(state,null,2), { mode:0o600 });
 }
+function toBase64Url(buf){
+  return buf.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
 
-/* --- health --- */
+/* ---------------- health ---------------- */
 app.get('/health', (_req,res)=>res.json({ ok:true, service:'tgapi', ts:Date.now() }));
 
-/* --- auth middleware (кроме health и wizard) --- */
+/* --------- auth middleware (кроме health и wizard) --------- */
 app.use((req,res,next)=>{
   if (req.path === '/health' || req.path === '/auth/qr/wizard') return next();
   const auth = req.headers.authorization || '';
@@ -56,7 +59,7 @@ app.use((req,res,next)=>{
   next();
 });
 
-/* --- GramJS --- */
+/* ---------------- GramJS ---------------- */
 async function getGram(){
   const { TelegramClient } = await import('telegram');
   const { StringSession }  = await import('telegram/sessions/index.js');
@@ -67,11 +70,8 @@ function buildClient(TelegramClient, StringSession, apiId, apiHash, sessionStrin
   const stringSession = new StringSession(sessionString || '');
   return new TelegramClient(stringSession, Number(apiId), String(apiHash), { connectionRetries: 5 });
 }
-function toBase64Url(buf){
-  return buf.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-}
 
-/* --- POST /auth/qr/start --- */
+/* ---------------- QR: start ---------------- */
 app.post('/auth/qr/start', async (req,res)=>{
   try{
     const { name, api_id, api_hash } = req.body || {};
@@ -97,7 +97,7 @@ app.post('/auth/qr/start', async (req,res)=>{
             },
             onError: (err)=>{
               saveQrState(name, { name, api_id, api_hash, status:'error', error:String(err), login_url: latestUrl, updated_at: new Date().toISOString() });
-              return true;
+              return true; // подавляем внутренние ретраи
             },
           }
         );
@@ -112,6 +112,7 @@ app.post('/auth/qr/start', async (req,res)=>{
       }
     })();
 
+    // попытаемся отдать login_url сразу (до 5 сек)
     const started = Date.now();
     while(!latestUrl && Date.now()-started<5000) await new Promise(r=>setTimeout(r,100));
     if (latestUrl) return res.json({ ok:true, name, status:'waiting', login_url: latestUrl });
@@ -122,7 +123,7 @@ app.post('/auth/qr/start', async (req,res)=>{
   }
 });
 
-/* --- GET /auth/qr/status --- */
+/* ---------------- QR: status ---------------- */
 app.get('/auth/qr/status', async (req,res)=>{
   try{
     const name = req.query.name;
@@ -140,7 +141,7 @@ app.get('/auth/qr/status', async (req,res)=>{
   }
 });
 
-/* --- GET /me --- */
+/* ---------------- Me ---------------- */
 app.get('/me', async (req,res)=>{
   try{
     const name = req.query.name;
@@ -162,7 +163,104 @@ app.get('/me', async (req,res)=>{
   }
 });
 
-/* --- HTML wizard (тестовый) --- */
+/* ---------------- Channels ---------------- */
+app.get('/channels', async (req,res)=>{
+  try{
+    const name  = req.query.name;
+    const limit = Math.max(1, Math.min(1000, Number(req.query.limit || 200)));
+    if (!name) return res.status(400).json({ ok:false, error:'name required' });
+
+    const { cfg, sessionString } = loadAcc(name);
+    if (!cfg?.api_id || !cfg?.api_hash || !sessionString) {
+      return res.status(400).json({ ok:false, error:'account not authorized' });
+    }
+
+    const { TelegramClient, StringSession } = await getGram();
+    const client = buildClient(TelegramClient, StringSession, cfg.api_id, cfg.api_hash, sessionString);
+    await client.connect();
+
+    const dialogs = await client.getDialogs({ limit });
+    const channels = dialogs.map(d => {
+      const entity = d.entity;
+      const title = d.title || entity?.title || entity?.username || '—';
+      const username = entity?.username || null;
+      const id = entity?.id?.toString?.() || null;
+      const isChannel = !!entity?.megagroup || !!entity?.broadcast;
+      const isUser    = !!entity?.firstName || !!entity?.lastName;
+      return { id, title, username, isChannel, isUser };
+    });
+
+    await client.disconnect();
+    return res.json({ ok:true, channels });
+  }catch(e){
+    return res.status(500).json({ ok:false, error:String(e) });
+  }
+});
+
+/* ---------------- Messages ---------------- */
+app.get('/messages', async (req,res)=>{
+  try{
+    const name    = req.query.name;
+    const channel = req.query.channel;   // username ('hamster_kombat') или numeric id
+    const limit   = Math.max(1, Math.min(200, Number(req.query.limit || 50)));
+    const offsetId = Number(req.query.offsetId || 0);
+
+    if (!name) return res.status(400).json({ ok:false, error:'name required' });
+    if (!channel) return res.status(400).json({ ok:false, error:'channel required' });
+
+    const { cfg, sessionString } = loadAcc(name);
+    if (!cfg?.api_id || !cfg?.api_hash || !sessionString) {
+      return res.status(400).json({ ok:false, error:'account not authorized' });
+    }
+
+    const { TelegramClient, StringSession } = await getGram();
+    const client = buildClient(TelegramClient, StringSession, cfg.api_id, cfg.api_hash, sessionString);
+    await client.connect();
+
+    const entity = await client.getEntity(channel);
+    const hist = await client.getMessages(entity, { limit, offsetId });
+    const messages = hist.map(m => ({
+      id: m.id,
+      date: m.date,
+      message: m.message || '',
+      senderId: m.senderId?.value || null,
+      peerId: m.peerId?.channelId?.value || m.peerId?.userId?.value || m.peerId?.chatId?.value || null,
+    }));
+    const nextOffsetId = messages.length ? messages[messages.length-1].id : 0;
+
+    await client.disconnect();
+    return res.json({ ok:true, messages, nextOffsetId });
+  }catch(e){
+    return res.status(500).json({ ok:false, error:String(e) });
+  }
+});
+
+/* ---------------- Send ---------------- */
+app.post('/send', async (req,res)=>{
+  try{
+    const { name, peer, message } = req.body || {};
+    if (!name || !peer || !message) return res.status(400).json({ ok:false, error:'name, peer, message required' });
+
+    const { cfg, sessionString } = loadAcc(name);
+    if (!cfg?.api_id || !cfg?.api_hash || !sessionString) {
+      return res.status(400).json({ ok:false, error:'account not authorized' });
+    }
+
+    const { TelegramClient, StringSession } = await getGram();
+    const client = buildClient(TelegramClient, StringSession, cfg.api_id, cfg.api_hash, sessionString);
+    await client.connect();
+
+    const entity = peer === 'me' ? 'me' : await client.getEntity(peer);
+    const sent = await client.sendMessage(entity, { message: String(message) });
+
+    await client.disconnect();
+    return res.json({ ok:true, sentId: sent?.id || null });
+  }catch(e){
+    return res.status(500).json({ ok:false, error:String(e) });
+  }
+});
+
+/* ---------------- HTML wizard (тестовый) ---------------- */
 app.get('/auth/qr/wizard', (_req,res)=>{
   res.setHeader('Content-Type','text/html; charset=utf-8');
   res.end(`<!doctype html><meta charset="utf-8"><title>QR Wizard</title>
