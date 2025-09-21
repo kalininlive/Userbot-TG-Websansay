@@ -42,9 +42,8 @@ function saveQrState(name, state){
   const { qrf } = accPaths(name);
   fs.writeFileSync(qrf, JSON.stringify(state,null,2), { mode:0o600 });
 }
-function toBase64Url(buf){
-  return buf.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-}
+const toBase64Url = (buf)=>buf.toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const toStr       = (v)=> (typeof v === 'bigint' ? v.toString() : v);
 
 /* ---------------- health ---------------- */
 app.get('/health', (_req,res)=>res.json({ ok:true, service:'tgapi', ts:Date.now() }));
@@ -69,6 +68,28 @@ async function getGram(){
 function buildClient(TelegramClient, StringSession, apiId, apiHash, sessionString=''){
   const stringSession = new StringSession(sessionString || '');
   return new TelegramClient(stringSession, Number(apiId), String(apiHash), { connectionRetries: 5 });
+}
+
+/* --- entity resolver: username | -100<id> | <id> | me --- */
+async function resolveEntity(client, peerInput) {
+  const raw = String(peerInput).trim();
+
+  // username (5..32 символов)
+  if (/^[a-zA-Z0-9_]{5,32}$/.test(raw)) return client.getEntity(raw);
+
+  // -100<id> для каналов
+  if (/^-100\d+$/.test(raw)) return client.getEntity(raw);
+
+  // голый числовой id
+  if (/^\d+$/.test(raw)) {
+    try { return await client.getEntity(`-100${raw}`); } // сначала как канал
+    catch (_) { return client.getEntity(Number(raw)); }  // иначе как user/chat
+  }
+
+  if (raw === 'me') return 'me';
+
+  // fallback — пусть GramJS сообщит понятную ошибку
+  return client.getEntity(raw);
 }
 
 /* ---------------- QR: start ---------------- */
@@ -157,6 +178,8 @@ app.get('/me', async (req,res)=>{
     await client.connect();
     const me = await client.getMe();
     await client.disconnect();
+
+    if (me && typeof me.id === 'bigint') me.id = me.id.toString();
     return res.json({ ok:true, me });
   }catch(e){
     return res.status(500).json({ ok:false, error:String(e) });
@@ -181,12 +204,12 @@ app.get('/channels', async (req,res)=>{
 
     const dialogs = await client.getDialogs({ limit });
     const channels = dialogs.map(d => {
-      const entity = d.entity;
-      const title = d.title || entity?.title || entity?.username || '—';
-      const username = entity?.username || null;
-      const id = entity?.id?.toString?.() || null;
-      const isChannel = !!entity?.megagroup || !!entity?.broadcast;
-      const isUser    = !!entity?.firstName || !!entity?.lastName;
+      const e = d.entity;
+      const title = d.title || e?.title || e?.username || '—';
+      const username = e?.username || null;
+      const id = e?.id !== undefined ? String(e.id) : null; // строкой
+      const isChannel = !!e?.megagroup || !!e?.broadcast;
+      const isUser    = !!e?.firstName || !!e?.lastName;
       return { id, title, username, isChannel, isUser };
     });
 
@@ -200,9 +223,9 @@ app.get('/channels', async (req,res)=>{
 /* ---------------- Messages ---------------- */
 app.get('/messages', async (req,res)=>{
   try{
-    const name    = req.query.name;
-    const channel = req.query.channel;   // username ('hamster_kombat') или numeric id
-    const limit   = Math.max(1, Math.min(200, Number(req.query.limit || 50)));
+    const name     = req.query.name;
+    const channel  = req.query.channel;   // username | -100<id> | <id>
+    const limit    = Math.max(1, Math.min(200, Number(req.query.limit || 50)));
     const offsetId = Number(req.query.offsetId || 0);
 
     if (!name) return res.status(400).json({ ok:false, error:'name required' });
@@ -217,16 +240,23 @@ app.get('/messages', async (req,res)=>{
     const client = buildClient(TelegramClient, StringSession, cfg.api_id, cfg.api_hash, sessionString);
     await client.connect();
 
-    const entity = await client.getEntity(channel);
+    const entity = await resolveEntity(client, channel);
     const hist = await client.getMessages(entity, { limit, offsetId });
+
     const messages = hist.map(m => ({
-      id: m.id,
+      id: m.id !== undefined ? String(m.id) : null,
       date: m.date,
       message: m.message || '',
-      senderId: m.senderId?.value || null,
-      peerId: m.peerId?.channelId?.value || m.peerId?.userId?.value || m.peerId?.chatId?.value || null,
-    }));
-    const nextOffsetId = messages.length ? messages[messages.length-1].id : 0;
+      senderId: m.senderId?.value !== undefined ? String(m.senderId.value) : null,
+      peerId: (
+        m.peerId?.channelId?.value ??
+        m.peerId?.userId?.value ??
+        m.peerId?.chatId?.value ??
+        null
+      )
+    })).map(x => ({ ...x, peerId: x.peerId !== null ? String(x.peerId) : null }));
+
+    const nextOffsetId = messages.length ? messages[messages.length-1].id : null;
 
     await client.disconnect();
     return res.json({ ok:true, messages, nextOffsetId });
@@ -250,11 +280,12 @@ app.post('/send', async (req,res)=>{
     const client = buildClient(TelegramClient, StringSession, cfg.api_id, cfg.api_hash, sessionString);
     await client.connect();
 
-    const entity = peer === 'me' ? 'me' : await client.getEntity(peer);
+    const entity = await resolveEntity(client, peer);
     const sent = await client.sendMessage(entity, { message: String(message) });
 
     await client.disconnect();
-    return res.json({ ok:true, sentId: sent?.id || null });
+    const sentId = sent?.id !== undefined ? String(sent.id) : null;
+    return res.json({ ok:true, sentId });
   }catch(e){
     return res.status(500).json({ ok:false, error:String(e) });
   }
