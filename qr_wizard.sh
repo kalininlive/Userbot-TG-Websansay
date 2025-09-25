@@ -10,7 +10,7 @@ read -r -p "Введите name (имя аккаунта): " NAME
 command -v jq >/dev/null || { echo "jq не установлен"; exit 1; }
 command -v qrencode >/dev/null || { echo "qrencode не установлен"; exit 1; }
 
-resp="$(curl -s -X POST "$API/auth/qr/start" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"name\":\"$NAME\",\"api_id\":$API_ID,\"api_hash\":\"$API_HASH\"}")"
+resp="$(curl -s -X POST "$API/auth/qr/start" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"name\":\"$NAME\",\"apiId\":$API_ID,\"apiHash\":\"$API_HASH\"}")"
 ok="$(echo "$resp" | jq -r '.ok // false')"; [ "$ok" = "true" ] || { echo "Ошибка старта: $resp"; exit 1; }
 
 clear; printf '\033[?25l'
@@ -19,7 +19,8 @@ prev=""; last=0; interval=15
 for _ in $(seq 1 600); do
   json="$(curl -s -G "$API/auth/qr/status" -H "Authorization: Bearer $TOKEN" --data-urlencode "name=$NAME")"
   status="$(echo "$json" | jq -r '.status // "unknown"')"
-  url="$(echo "$json" | jq -r '.login_url // empty')"
+  # Extract QR login URL from either the new 'qr' field or the legacy 'login_url' field
+  url="$(echo "$json" | jq -r '.qr // .login_url // empty')"
   printf '\033[H'
   echo "API: $API"; echo "NAME: $NAME"; echo "TIME: $(date '+%Y-%m-%d %H:%M:%S')"; echo "STAT: $status"; echo
   if [ "$status" = "authorized" ]; then
