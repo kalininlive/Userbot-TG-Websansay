@@ -31,10 +31,11 @@ fi
 [ -f package.json ] || npm init -y >/dev/null 2>&1 || true
 npm i express cors dotenv telegram
 
-# fetch server.js & qr_wizard.sh from this repo
+# fetch server.js & wizard scripts from this repo (refresh on rerun)
 curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/src/server.js -o /opt/tgapi/src/server.js
 curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/qr_wizard.sh -o /opt/tgapi/qr_wizard.sh
-chmod +x /opt/tgapi/qr_wizard.sh
+curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/qr_wizard_local.sh -o /opt/tgapi/qr_wizard_local.sh
+chmod +x /opt/tgapi/qr_wizard.sh /opt/tgapi/qr_wizard_local.sh
 
 pm2 start /opt/tgapi/src/server.js --name tgapi || pm2 restart tgapi --update-env
 pm2 save
