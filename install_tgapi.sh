@@ -40,10 +40,11 @@ fi
 
 # fetch server.js & qr_wizard.sh from this repo
 curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/src/server.js -o /opt/tgapi/src/server.js
+curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/ecosystem.config.cjs -o /opt/tgapi/ecosystem.config.cjs
 curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/qr_wizard.sh -o /opt/tgapi/qr_wizard.sh
 chmod +x /opt/tgapi/qr_wizard.sh
 
-pm2 start /opt/tgapi/src/server.js --name tgapi || pm2 restart tgapi --update-env
+pm2 start /opt/tgapi/ecosystem.config.cjs --env production || pm2 restart tgapi --update-env
 pm2 save
 
 API_TOKEN=$(grep '^API_TOKEN=' /opt/tgapi/.env | cut -d= -f2)

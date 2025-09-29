@@ -31,7 +31,30 @@ cd /opt/tgapi
 # Установить npm-зависимости (если не сделали автоматически)
 npm ci --production
 
-# Запустить приложение через pm2
+# Убедитесь, что рядом лежит ecosystem.config.cjs (устанавливается скриптом) и запустите через pm2
+# Если файла нет, создайте его вручную:
+cat <<'CONFIG' > ecosystem.config.cjs
+/**
+ * PM2 ecosystem configuration for the tgapi service.
+ */
+module.exports = {
+  apps: [
+    {
+      name: 'tgapi',
+      cwd: '/opt/tgapi',
+      script: 'src/server.js',
+      env: {
+        NODE_ENV: 'development',
+        PORT: '3000',
+      },
+      env_production: {
+        NODE_ENV: 'production',
+        PORT: '3000',
+      },
+    },
+  ],
+};
+CONFIG
 pm2 start ecosystem.config.cjs --env production && pm2 save
 
 # Запустить локальный терминальный QR-визард (если QR не отображается в текущем терминале)
