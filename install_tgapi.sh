@@ -28,8 +28,15 @@ if ! grep -q '^API_TOKEN=' .env || [ -z "$(grep '^API_TOKEN=' .env | cut -d= -f2
 fi
 
 # deps
-[ -f package.json ] || npm init -y >/dev/null 2>&1 || true
-npm i express cors dotenv telegram
+if [ ! -f package.json ]; then
+  curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/package.json -o package.json
+fi
+if [ ! -f package-lock.json ]; then
+  curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/package-lock.json -o package-lock.json
+fi
+if ! npm ci --omit=dev; then
+  npm install --production
+fi
 
 # fetch server.js & qr_wizard.sh from this repo
 curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/src/server.js -o /opt/tgapi/src/server.js

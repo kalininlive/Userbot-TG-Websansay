@@ -1,0 +1,21 @@
+{
+  "name": "userbot-tg-websansay",
+  "version": "1.0.0",
+  "description": "Deployment package for Userbot TG Websansay server",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "lint": "echo \"No lint command configured\"",
+    "check:server": "node --check src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pino": "^9.1.0",
+    "qrcode": "^1.5.3",
+    "qrcode-terminal": "^0.12.0",
+    "telegram": "^2.18.0"
+  }
+}
