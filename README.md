@@ -1,99 +1,53 @@
-# Userbot-TG-Websansay — инструкция по использованию
+Userbot-TG-Websansay
+Готовый к работе API-сервер для Telegram Userbot на базе GramJS с простой установкой и удобным подключением аккаунтов через QR-код.
 
-Ниже — только практические команды и минимальные инструкции по быстрому запуску и привязке аккаунта через QR.
+Быстрый старт: одна команда
+Для установки и запуска сервера на чистом сервере (Ubuntu/Debian) выполните в терминале всего одну команду:
 
-## Быстрый старт — одна команда
-Выполните одну команду в терминале (она установит нужные пакеты и запустит установщик):
-```bash
-sudo apt update && sudo apt install -y qrencode jq && bash <(curl -fsSL https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/install_tgapi.sh)
-````
+bash <(curl -sSL [https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/install.sh](https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/install.sh))
 
-После выполнения установщика следуйте подсказкам: при запросе введите `api_id`, `api_hash` и `name`, затем отсканируйте появившийся QR в мобильном Telegram.
+Скрипт автоматически:
 
----
+Установит все необходимые системные пакеты (Node.js, pm2, jq и др.).
 
-## Что вводить в визарде
+Настроит, установит зависимости и запустит API-сервер в фоновом режиме.
 
-* `api_id` — ваш API ID с [https://my.telegram.org](https://my.telegram.org) (число)
-* `api_hash` — ваш API Hash с [https://my.telegram.org](https://my.telegram.org) (строка)
-* `name` — имя сессии (короткая строка, например `test1`)
+Запустит интерактивный мастер для подключения вашего первого Telegram-аккаунта через QR-код в терминале.
 
----
+Просто следуйте инструкциям на экране.
 
-## Если что-то пошло не так — запасной набор команд
+Подключение дополнительных аккаунтов
+Если вам нужно подключить еще один аккаунт после установки, скачайте и запустите qr_wizard.sh:
 
-(выполняйте по очереди, только если установка/запуск не получились)
+# Скачиваем мастер подключения
+curl -sSL -o qr_wizard.sh [https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/qr_wizard.sh](https://raw.githubusercontent.com/kalininlive/Userbot-TG-Websansay/main/qr_wizard.sh)
+chmod +x qr_wizard.sh
 
-```bash
-# Перейти в каталог приложения
-cd /opt/tgapi
+# Запускаем
+./qr_wizard.sh
 
-# Установить npm-зависимости (если не сделали автоматически)
-npm ci --production
+Полезные команды
+Ваш API-сервер работает под управлением pm2.
 
-# Запустить приложение через pm2
-pm2 start ecosystem.config.cjs --env production && pm2 save
+Посмотреть логи сервера:
 
-# Запустить локальный терминальный QR-визард (если QR не отображается в текущем терминале)
-sudo bash ./qr_wizard_local.sh
-```
+pm2 logs tgapi
 
----
+Перезапустить сервер:
 
-## Быстрые проверки и отладка
+pm2 restart tgapi
 
-* Проверить профиль подключённой сессии (замените `test1` на имя вашей сессии):
+Остановить сервер:
 
-```bash
-TOKEN="$(grep -E '^API_TOKEN=' /opt/tgapi/.env | cut -d'=' -f2-)"
-curl -sS -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:3000/me?name=test1" | jq .
-```
+pm2 stop tgapi
 
-* Просмотр логов:
+Посмотреть список сессий:
 
-```bash
-pm2 logs tgapi --lines 200
-```
+ls -l /opt/tgapi/sessions
 
-* Список сессий:
+Безопасность
+Скрипт установки автоматически генерирует уникальный API_TOKEN и сохраняет его в файле /opt/tgapi/.env.
 
-```bash
-ls -la /opt/tgapi/sessions
-```
+Никогда не публикуйте содержимое папки /opt/tgapi/sessions и файл .env.
 
-* Скачать PNG QR (если сервер отдаёт PNG):
-
-```bash
-TOKEN="$(grep -E '^API_TOKEN=' /opt/tgapi/.env | cut -d'=' -f2-)"
-curl -sS -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:3000/auth/qr/png?name=test1" -o /tmp/qr_test1.png
-```
-
----
-
-## Минимальный пример `/opt/tgapi/.env`
-
-Создайте файл `/opt/tgapi/.env` с минимумом полей:
-
-```
-API_PORT=3000
-API_TOKEN=replace_with_secure_token
-SESSION_DIR=./sessions
-UPLOAD_DIR=./uploads
-DOWNLOAD_DIR=./downloads
-```
-
-**Важно:** не коммитьте этот файл в публичный репозиторий.
-
----
-
-## Кратко о безопасности
-
-* Не публикуйте `.env`, `sessions/`, `uploads/` или `downloads/`. Добавьте их в `.gitignore`.
-* Храните `API_TOKEN` и `api_hash` в секрете. Логи не должны содержать полных секретных значений.
-* Подключайтесь к серверу по SSH ключам; не открывайте лишние порты без защиты.
-
----
-
-## Поддержка
-
-Если инструкция и скрипты были полезны — пожалуйста, поддержите проект ⭐ на GitHub и подпишитесь на канал с автоматизациями: [https://t.me/+VxXC2TaMEv0zMzcy](https://t.me/+VxXC2TaMEv0zMzcy)
+Для доступа к API извне (например, из n8n) используйте ваш IP-адрес сервера и API_TOKEN в заголовке Authorization: Bearer <ваш_токен>.
